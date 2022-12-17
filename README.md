@@ -90,8 +90,6 @@ Example: 5.7.0-1
 
 The Docker image is scanned every day with the open source vulnerability scanner [Trivy](https://github.com/aquasecurity/trivy).
 
-The latest vulnerability scan report is available on [Gitlab Security Dashboard](https://gitlab.com/op_so/docker/alpine-squid/-/security/dashboard/?state=DETECTED&state=CONFIRMED&reportType=CONTAINER_SCANNING).
-
 ## Authors
 
 * **FX Soubirou** - *Initial work* - [GitLab repositories](https://gitlab.com/op_so)
