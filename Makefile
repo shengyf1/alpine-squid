@@ -20,7 +20,7 @@ docker-build-push:
 	fi))
 	@echo ${sha_tag}
 	$(eval latest_sha := $(shell echo ${sha_tag} | awk '{print $$1}'))
-	$(eval version := $(shell docker run -it --rm alpine@${latest_sha} /bin/sh -c "apk --no-cache add squid" | grep "Installing squid" | sed 's/.*(\(.*\)-.*)/\1/'))
+	$(eval version := $(shell docker run --rm alpine@${latest_sha} /bin/sh -c "apk --no-cache add squid" | grep "Installing squid" | sed 's/.*(\(.*\)-.*)/\1/'))
 	$(eval version := $(shell if [ ${#version} -lt 5 ]; then echo "${version}.0"; else echo "${version}"; fi))
 	$(eval tag := $(shell if [ -z ${tag} ]; then echo "${IMAGE_BUILT}:latest"; else echo "${tag}"; fi))
 	$(eval build_date := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ'))
