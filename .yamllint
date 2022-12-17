@@ -1,0 +1,9 @@
+---
+extends: default
+
+ignore: |
+  Taskfile.d/
+  Taskfile.yml
+
+rules:
+  line-length: disable

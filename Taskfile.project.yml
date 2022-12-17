@@ -1,0 +1,89 @@
+---
+# https://taskfile.dev
+#
+# Taskfile.project.yml for your main project tasks. Must be commited.
+# If you always want the last version of the task templates, add the following line in your .gitignore file
+# /Taskfile.d/
+#
+version: '3'
+
+vars:
+  IMAGE_RF: jfxs/robot-framework:latest
+  # TO MODIFY: Task templates to download separated by comma
+  # Example: TASK_TEMPLATES: go,lint,yarn
+  TASK_TEMPLATES: git,lint,yarn
+
+tasks:
+
+  00-init-task:
+    desc: "[PROJECT] Init and download tasks templates."
+    cmds:
+      - date > {{.FILE_TASK_START}}
+      - defer: rm -f {{.FILE_TASK_START}}
+      - mkdir -p "{{.DIR_TASKFILES}}"
+      - task 10-t-activate TEMPLATE={{.TASK_TEMPLATES}}
+      - task 20-t-download
+    silent: true
+
+  10-RF-test:
+    desc: "[PROJECT] Robot Framework tests. Arguments: [IMG|I=jfxs/ansible:latest] [PULL|P=<n|N>] (*)"
+    summary: |
+      [PROJECT] Robot Framework tests.
+      If robot command is in the path and IMG/I argument is not set, the local robot command is executed,
+      otherwise an Robot Framework Docker image is used.
+      Usage: task 00:10-RF-test [IMG|I=<docker_image:tag>] [PULL|P=<n|N>]
+
+      Arguments:
+       IMG    | I  Docker Robot Framework image to use (optional, by default {{.IMAGE_RF}})
+       PULL   | P  Pull docker image (optional, by default yes)
+    vars:
+      IMG: '{{default .I .IMG}}'
+      IMG_D: '{{default .IMAGE_RF .IMG}}'
+      PULL: '{{default .P .PULL}}'
+      EXEC: robot
+    cmds:
+      - mkdir -p reports
+      - |
+        if (! test -n "{{.IMG}}") && (command -v {{.EXEC}} 2>&1 >/dev/null); then
+          {{.EXEC}} --outputdir reports tests/RF
+        else
+          if ! command -v docker 2>&1 >/dev/null; then
+            echo "docker and {{.EXEC}} are not installed!" && exit 1
+          fi
+          if [ "{{.PULL}}" != "n" ] && [ "{{.PULL}}" != "N" ]; then docker pull "{{.IMG_D}}"; fi
+          chmod 777 reports
+          docker run -t --rm -v $(pwd)/tests:/tests:ro -v $(pwd)/files:/files:ro -v $(pwd)/reports:/reports "{{.IMG_D}}" {{.EXEC}} --outputdir /reports -v TESTS_DIR:/tests -v SHELL_DIR:/files RF
+          chmod 755 reports
+        fi
+    silent: true
+
+  20-sanity-test:
+    desc: "[PROJECT] Sanity tests. Arguments: PROXY|P=http://proxy:3128 (*)"
+    summary: |
+      [PROJECT] Sanity tests.
+      Usage: task 00:20-sanity-test PROXY|P=<proxy_url>
+
+      Arguments:
+       PROXY    | P  Proxy host to test (required)
+    vars:
+      PROXY: '{{default .P .PROXY}}'
+      TARGET: google.com
+    cmds:
+      - |
+        ok_200=$(export http_proxy="{{.PROXY}}" && export https_proxy="{{.PROXY}}" && wget -Y on --spider --server-response "{{.TARGET}}" 2>&1 | grep '200\ OK' | wc -l | awk '{print $1}')
+        if [ $ok_200 -eq 1 ]; then printf "\033[0;32m[OK]\033[0m Sanity test.\n"; else printf "\033[0;31m[FAILED] Sanity test!\033[0m\n" && exit 1; fi
+    preconditions:
+      - sh: test -n "{{.PROXY}}" || test -n "{{.P}}"
+        msg: "PROXY|P argument is required"
+    silent: true
+
+  30-pre-commit:
+    desc: "[PROJECT] Pre-commit checks."
+    cmds:
+      - date > {{.FILE_TASK_START}}
+      - defer: rm -f {{.FILE_TASK_START}}
+      - task lint:all MEX='\"#node_modules\" \"#.node_cache\"'
+      - task lint:docker
+      - task lint:shell FILES=files/*.sh
+      - echo "" && echo "Checks Start $(cat {{.FILE_TASK_START}}) - End $(date)"
+    silent: true

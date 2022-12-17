@@ -1,0 +1,110 @@
+---
+include:
+  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-multiarch-template.yml'
+  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-trivy-scan-template.yml'
+  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-extends-multiarch-trivy-template.yml'
+  - remote: 'https://gitlab.com/fxs/docker-slack-notify/raw/master/.slack-notify-trivy-template.yml'
+
+variables:
+  # CI-TOOLKIT VARIABLES TO DECLARE IN CI/CD VARIABLES:
+  T_DOCKERHUB_USER: $DOCKERHUB_USER
+  T_DOCKERHUB_PASSWORD: $DOCKERHUB_PASSWORD
+  T_SLACK_WEBHOOK: $SLACK_WEBHOOK
+  # CI-TOOLKIT VARIABLES TO MODIFY:
+  T_DOCKERHUB_IMAGE_REPOSITORY: jfxs/alpine-squid
+  # project variables
+  IMAGE_CI_TOOLKIT: jfxs/ci-toolkit:latest
+  IMAGE_DEFAULT: alpine:latest
+  IMAGE_DOCKER: docker:latest
+  IMAGE_HADOLINT: hadolint/hadolint:latest-alpine
+  IMAGE_MARKDOWNLINT: davidanson/markdownlint-cli2
+  IMAGE_SHELLCHECK: koalaman/shellcheck-alpine:stable
+  IMAGE_RF: jfxs/robot-framework:latest
+  IMAGE_YAMLLINT: jfxs/ansible
+  SERVICE_DOCKER_TAG: stable-dind
+
+stages:
+  - checks
+  - build-image
+  - scan-image
+  - test-image
+  - get-versions
+  - dockerhub-tag
+  - dockerhub-doc
+  - notify-slack
+  - rebot-tests
+  - gitlab-pages
+
+lint-file:
+  image: $IMAGE_DEFAULT
+  stage: checks
+  before_script:
+    - apk --no-cache add curl file git ncurses
+    - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+    - task --version
+    - curl --progress-bar -o Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
+    - task 00:00-init-task
+  script:
+    - task lint:file
+
+lint-markdown:
+  image:
+    name: $IMAGE_MARKDOWNLINT
+    entrypoint: [""]
+  stage: checks
+  before_script:
+    - export PATH="$PATH:./bin"
+    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
+    - task --version
+    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
+    - task 00:00-init-task
+  script:
+    - task lint:markdown G="\"**/*.md\""
+
+lint-shell:
+  image: $IMAGE_SHELLCHECK
+  stage: checks
+  before_script:
+    - export PATH="$PATH:./bin"
+    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
+    - task --version
+    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
+    - task 00:00-init-task
+  script:
+    - task lint:shell FILES="files/*.sh"
+
+lint-yaml:
+  image:
+    name: $IMAGE_YAMLLINT
+  stage: checks
+  before_script:
+    - export PATH="$PATH:./bin"
+    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
+    - task --version
+    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
+    - task 00:00-init-task
+  script:
+    - task lint:yaml
+
+amd64:sanity-test:
+  variables:
+    ARCH: amd64
+  retry: 2
+  image: $IMAGE_DEFAULT
+  stage: test-image
+  services:
+    - name: $T_CI_REGISTRY_IMAGE_TAG
+      alias: proxy
+  before_script:
+    - apk --no-cache add curl file git ncurses
+    - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+    - task --version
+  script:
+    - task 00:20-sanity-test PROXY=http://proxy:3128
+
+arm64:sanity-test:
+  extends: amd64:sanity-test
+  tags:
+    - arm64
+  variables:
+    ARCH: arm64
