@@ -56,4 +56,4 @@ sanity-test:version:
   before_script:
     - if [ ! -f "$TASKFILE_VERSION" ]; then wget -q -O "$TASKFILE_VERSION" https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.d/version.yml; fi
     - squid_version=$(task --taskfile "$TASKFILE_VERSION" get-docker-cli-version IMG="$DOCKER_REGISTRY_IMAGE_TAG" CMD="squid --version")
-    - DOCKER_VERSION_CLI=$(task --taskfile "$TASKFILE_VERSION" format-semver VERSION="$squid_version" CMD="docker)
+    - DOCKER_VERSION_CLI=$(task --taskfile "$TASKFILE_VERSION" format-semver VERSION="$squid_version")
