@@ -1,106 +1,49 @@
 ---
 include:
-  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-multiarch-template.yml'
-  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-trivy-scan-template.yml'
-  - remote: 'https://gitlab.com/fxs/docker-ci-toolkit/raw/master/.ci-toolkit-extends-multiarch-trivy-template.yml'
-  - remote: 'https://gitlab.com/fxs/docker-slack-notify/raw/master/.slack-notify-trivy-template.yml'
+  - remote: 'https://gitlab.com/op_so/projects/gitlab-ci-templates/-/raw/main/templates/lint.gitlab-ci.yml'
+  - remote: 'https://gitlab.com/op_so/projects/gitlab-ci-templates/-/raw/main/templates/image-factory.gitlab-ci.yml'
 
 variables:
-  # CI-TOOLKIT VARIABLES TO DECLARE IN CI/CD VARIABLES:
-  T_DOCKERHUB_USER: $DOCKERHUB_USER
-  T_DOCKERHUB_PASSWORD: $DOCKERHUB_PASSWORD
-  T_SLACK_WEBHOOK: $SLACK_WEBHOOK
-  # CI-TOOLKIT VARIABLES TO MODIFY:
-  T_DOCKERHUB_IMAGE_REPOSITORY: jfxs/alpine-squid
-  # project variables
-  IMAGE_CI_TOOLKIT: jfxs/ci-toolkit:latest
-  IMAGE_DEFAULT: alpine:latest
-  IMAGE_DOCKER: docker:latest
-  IMAGE_HADOLINT: hadolint/hadolint:latest-alpine
-  IMAGE_MARKDOWNLINT: davidanson/markdownlint-cli2
-  IMAGE_SHELLCHECK: koalaman/shellcheck-alpine:stable
-  IMAGE_RF: jfxs/robot-framework:latest
-  IMAGE_YAMLLINT: jfxs/ansible
-  SERVICE_DOCKER_TAG: stable-dind
+  DOCKER_REGISTRY_IMAGE_TAG: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_SLUG:$CI_COMMIT_SHORT_SHA
+  DOCKER_DOCKERHUB_IMAGE_REPOSITORY: index.docker.io/jfxs/alpine-squid
+  DOCKER_DOCKERHUB_RM_URL: jfxs/alpine-squid
+  DOCKER_QUAY_IMAGE_REPOSITORY: quay.io/ifxs/alpine-squid
+  DOCKER_QUAY_RM_URL: quay.io/ifxs/alpine-squid
+  DOCKER_SBOM_SUBSET: "^squid "
+  IMAGE_ALPINE: alpine:latest
+  LINT_DOCKER: "true"
+  LINT_SHELL: "true"
+  LINT_SHELL_FILE: "files/*.sh"
+  TASKFILE_VERSION: .Taskfile-version.yml
 
 stages:
-  - checks
+  - lint
   - build-image
-  - scan-image
   - test-image
-  - get-versions
-  - dockerhub-tag
-  - dockerhub-doc
-  - notify-slack
-  - rebot-tests
-  - gitlab-pages
+  - trigger-publish-image
+  - publish-image
+#  - notify-gchat
 
-lint-file:
-  image: $IMAGE_DEFAULT
-  stage: checks
+docker:build:
   before_script:
-    - apk --no-cache add curl file git ncurses
-    - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
-    - task --version
-    - curl --progress-bar -o Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
-    - task 00:00-init-task
-  script:
-    - task lint:file
-
-lint-markdown:
-  image:
-    name: $IMAGE_MARKDOWNLINT
-    entrypoint: [""]
-  stage: checks
-  before_script:
-    - export PATH="$PATH:./bin"
-    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
-    - task --version
-    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
-    - task 00:00-init-task
-  script:
-    - task lint:markdown G="\"**/*.md\""
-
-lint-shell:
-  image: $IMAGE_SHELLCHECK
-  stage: checks
-  before_script:
-    - export PATH="$PATH:./bin"
-    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
-    - task --version
-    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
-    - task 00:00-init-task
-  script:
-    - task lint:shell FILES="files/*.sh"
-
-lint-yaml:
-  image:
-    name: $IMAGE_YAMLLINT
-  stage: checks
-  before_script:
-    - export PATH="$PATH:./bin"
-    - sh -c "$(wget -qO - https://taskfile.dev/install.sh)" -- -d
-    - task --version
-    - wget -qO Taskfile.yml https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.dist.yml
-    - task 00:00-init-task
-  script:
-    - task lint:yaml
+    - if [ ! -f "$TASKFILE_VERSION" ]; then wget -q -O "$TASKFILE_VERSION" https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.d/version.yml; fi
+    - DOCKER_BUILD_VERSION=$(task --taskfile "$TASKFILE_VERSION" get-docker-apk-version IMG="$IMAGE_ALPINE" APK="squid")
 
 amd64:sanity-test:
   variables:
     ARCH: amd64
   retry: 2
-  image: $IMAGE_DEFAULT
+  image: $IMAGE_ALPINE
   stage: test-image
   services:
-    - name: $T_CI_REGISTRY_IMAGE_TAG
+    - name: $DOCKER_REGISTRY_IMAGE_TAG
       alias: proxy
   before_script:
     - apk --no-cache add curl file git ncurses
     - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
     - task --version
   script:
-    - task 00:20-sanity-test PROXY=http://proxy:3128
+    - task 00:30-sanity-test PROXY=http://proxy:3128
 
 arm64:sanity-test:
   extends: amd64:sanity-test
@@ -108,3 +51,9 @@ arm64:sanity-test:
     - arm64
   variables:
     ARCH: arm64
+
+sanity-test:version:
+  before_script:
+    - if [ ! -f "$TASKFILE_VERSION" ]; then wget -q -O "$TASKFILE_VERSION" https://gitlab.com/op_so/task/task-templates/-/raw/main/Taskfile.d/version.yml; fi
+    - squid_version=$(task --taskfile "$TASKFILE_VERSION" get-docker-cli-version IMG="$DOCKER_REGISTRY_IMAGE_TAG" CMD="squid --version")
+    - DOCKER_VERSION_CLI=$(task --taskfile "$TASKFILE_VERSION" format-semver VERSION="$squid_version" CMD="docker)

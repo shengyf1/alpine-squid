@@ -17,9 +17,9 @@ includes:
 # ansible:
 #   taskfile: "./Taskfile.d/ansible.yml"
 #   optional: true
-# docker:
-#   taskfile: "./Taskfile.d/docker.yml"
-#   optional: true
+  docker:
+    taskfile: "./Taskfile.d/docker.yml"
+    optional: true
   git:
     taskfile: "./Taskfile.d/git.yml"
     optional: true
@@ -35,9 +35,15 @@ includes:
 # multipass:
 #   taskfile: "./Taskfile.d/multipass.yml"
 #   optional: true
+# sbom:
+#   taskfile: "./Taskfile.d/sbom.yml"
+#   optional: true
 # system:
 #   taskfile: "./Taskfile.d/system.yml"
 #   optional: true
+  version:
+    taskfile: "./Taskfile.d/version.yml"
+    optional: true
   yarn:
     taskfile: "./Taskfile.d/yarn.yml"
     optional: true
@@ -84,13 +90,14 @@ tasks:
       - defer: rm -f {{.FILE_TASK_START}}
       - mkdir -p "{{.DIR_TASKFILES}}"
       # - task download-template TEMPLATE=ansible.yml
-      # - task download-template TEMPLATE=docker.yml
+      - task download-template TEMPLATE=docker.yml
       - task download-template TEMPLATE=git.yml
       # - task download-template TEMPLATE=go.yml
       - task download-template TEMPLATE=lint.yml
       # - task download-template TEMPLATE=multipass-lite.yml
       # - task download-template TEMPLATE=multipass.yml
       # - task download-template TEMPLATE=system.yml
+      - task download-template TEMPLATE=version.yml
       - task download-template TEMPLATE=yarn.yml
       - echo "Download Start $(cat {{.FILE_TASK_START}}) - End $(date)"
     preconditions:

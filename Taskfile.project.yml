@@ -8,10 +8,11 @@
 version: '3'
 
 vars:
+  DEFAULT_TAG: alpine-squid
   IMAGE_RF: jfxs/robot-framework:latest
   # TO MODIFY: Task templates to download separated by comma
   # Example: TASK_TEMPLATES: go,lint,yarn
-  TASK_TEMPLATES: git,lint,yarn
+  TASK_TEMPLATES: docker,git,lint,version,yarn
 
 tasks:
 
@@ -25,7 +26,31 @@ tasks:
       - task 20-t-download
     silent: true
 
-  10-RF-test:
+  10-build-local:
+    desc: "[PROJECT] Build an image locally. Arguments: TAG|T=image:tag [VCS_REF|C=110f273aad1cc] [FILE|F=<Dockerfile_path>] (*)"
+    summary: |
+      [PROJECT] Build an image locally.
+      Usage: task 00:10-build-local TAG|T=<image[:tag]> [VCS_REF|C=<commit_sha>] [FILE|F=<Dockerfile_path>]
+
+      Arguments:
+       TAG     | T  Tag of the image (optional)
+       VCS_REF | C  Commit revision SHA hash (optional, by default NO_REF)
+       FILE    | F  Dockerfile path (optional, by default Dockerfile)
+    vars:
+      TAG: '{{default .T .TAG}}'
+      D_TAG: '{{default .DEFAULT_TAG .TAG}}'
+      VCS_REF: '{{default .C .VCS_REF}}'
+      D_VCS_REF: '{{default "NO_REF" .VCS_REF}}'
+      FILE: '{{default .F .FILE}}'
+      D_FILE: '{{default "Dockerfile" .FILE}}'
+    cmds:
+      - |
+        version=$(task version:get-docker-apk-version IMG=alpine:latest APK="squid")
+        echo "$version"
+        task docker:build-local TAG="{{.D_TAG}}" VERSION="$version" VCS_REF="{{.D_VCS_REF}}" FILE="{{.D_FILE}}"
+    silent: true
+
+  20-RF-test:
     desc: "[PROJECT] Robot Framework tests. Arguments: [IMG|I=jfxs/ansible:latest] [PULL|P=<n|N>] (*)"
     summary: |
       [PROJECT] Robot Framework tests.
@@ -57,7 +82,7 @@ tasks:
         fi
     silent: true
 
-  20-sanity-test:
+  30-sanity-test:
     desc: "[PROJECT] Sanity tests. Arguments: PROXY|P=http://proxy:3128 (*)"
     summary: |
       [PROJECT] Sanity tests.
@@ -77,12 +102,12 @@ tasks:
         msg: "PROXY|P argument is required"
     silent: true
 
-  30-pre-commit:
+  40-pre-commit:
     desc: "[PROJECT] Pre-commit checks."
     cmds:
       - date > {{.FILE_TASK_START}}
       - defer: rm -f {{.FILE_TASK_START}}
-      - task lint:all MEX='\"#node_modules\" \"#.node_cache\"'
+      - task lint:all
       - task lint:docker
       - task lint:shell FILES=files/*.sh
       - echo "" && echo "Checks Start $(cat {{.FILE_TASK_START}}) - End $(date)"
