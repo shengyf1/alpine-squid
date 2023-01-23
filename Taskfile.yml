@@ -8,101 +8,75 @@ version: '3'
 vars:
   DIR_TASKFILES: "Taskfile.d"
   FILE_TASK_START: "task-start-{{.TASK}}.txt"
-  TT_GIT_REPO: "https://gitlab.com/op_so/task/task-templates/-/raw/main"
+  TT_GIT_REPO: "https://gitlab.com/op_so/task/task-templates/-/raw"
 
 includes:
   00:
-    taskfile: "./Taskfile.project.yml"
+    taskfile: "Taskfile.project.yml"
     optional: true
-# ansible:
-#   taskfile: "./Taskfile.d/ansible.yml"
-#   optional: true
+    # BEGIN-INCLUDES-TEMPLATES
   docker:
-    taskfile: "./Taskfile.d/docker.yml"
+    taskfile: Taskfile.d/docker.yml
     optional: true
   git:
-    taskfile: "./Taskfile.d/git.yml"
+    taskfile: Taskfile.d/git.yml
     optional: true
-# go:
-#   taskfile: "./Taskfile.d/go.yml"
-#   optional: true
   lint:
-    taskfile: "./Taskfile.d/lint.yml"
+    taskfile: Taskfile.d/lint.yml
     optional: true
-# multipass-lite:
-#   taskfile: "./Taskfile.d/multipass-lite.yml"
-#   optional: true
-# multipass:
-#   taskfile: "./Taskfile.d/multipass.yml"
-#   optional: true
-# sbom:
-#   taskfile: "./Taskfile.d/sbom.yml"
-#   optional: true
-# system:
-#   taskfile: "./Taskfile.d/system.yml"
-#   optional: true
   version:
-    taskfile: "./Taskfile.d/version.yml"
+    taskfile: Taskfile.d/version.yml
     optional: true
-  yarn:
-    taskfile: "./Taskfile.d/yarn.yml"
-    optional: true
+    # END-INCLUDES-TEMPLATES
 
 tasks:
 
-  10-t-activate:
-    summary: |
-      [CORE] Activate Tasks templates.
-      Usage: task [-t Taskfile.dist.yml] 10-t-activate TEMPLATE|T=<template1-name>,<template2-name> [FILE|F=Taskfile.dist.yml]
-
-      Arguments:
-       TEMPLATE | T List of the templates to activate separated by comma (required)
-       FILE | F     Taskfile path (optional, by default Taskfile.yml)
+  10-install-templates:
+    #  summary: |
+    #    [CORE] Activate Tasks templates.
+    #    Usage: task [-t Taskfile.dist.yml] 10-t-activate TEMPLATE|T=<template1-name>,<template2-name> [FILE|F=Taskfile.dist.yml]
+    #
+    #    Arguments:
+    #    TEMPLATE | T List of the templates to activate separated by comma (required)
+    #     FILE | F     Taskfile path (optional, by default Taskfile.yml)
     vars:
       TEMPLATE: '{{default .T .TEMPLATE}}'
       FILE: '{{default .F .FILE}}'
-      FILE_DEFAULT: "Taskfile.yml"
-      FILE_PATH: '{{default .FILE_DEFAULT .FILE}}'
+      D_FILE: '{{default "Taskfile.yml" .FILE}}'
+      BEGIN: "    # BEGIN-INCLUDES-TEMPLATES"
+      PATTERN_BEGIN: "^{{.BEGIN}}"
+      PATTERN_END: "^    # END-INCLUDES-TEMPLATES"
     cmds:
       - mkdir -p "{{.DIR_TASKFILES}}"
+      - defer: rm -f "{{.D_FILE}}".bu
+      - sed -i'.bu' '/{{.PATTERN_BEGIN}}/,//{/{{.PATTERN_BEGIN}}/!{/^    \# END-INCLUDES-TEMPLATES/!d;};}' "{{.D_FILE}}"
+      - |
+        includes="{{.BEGIN}}"
+        for t in $(echo "{{.TEMPLATE}}" | tr "," " "); do
+          if echo "$t" | grep -q "\[" 2>/dev/null; then
+            task=$(echo "$t" | cut -d '[' -f 1)
+          else
+            task="$t"
+          fi
+          includes="$includes\\n  ${task}:\\n    taskfile: {{.DIR_TASKFILES}}/${task}.yml\\n    optional: true"
+        done
+        sed -i'.bu' "s={{.PATTERN_BEGIN}}=${includes}=g" "{{.D_FILE}}"
       - |
         for t in $(echo "{{.TEMPLATE}}" | tr "," " "); do
-          if ! grep -Fq "Taskfile.d/${t}.yml" "{{.FILE_PATH}}"
-          then
-            printf "\e[33m [WARNING]: %s template does not exist.\033[0m Please upgrade your Taskfile.yml file!\n" "${t}"
+          if echo "$t" | grep -q "\[" 2>/dev/null; then
+            task=$(echo "$t" | cut -d '[' -f 1)
+            v=$(echo "$t" | sed -e 's/.*\[\(.*\)\]/\1/')
+            version="v${v}"
           else
-            sed -i.bu "/${t}:$/s/^#/ /" "{{.FILE_PATH}}"
-            sed -i.bu "/${t}:$/{n;s/^#/ /;}" "{{.FILE_PATH}}"
-            sed -i.bu "/${t}:$/{n;n;s/^#/ /;}" "{{.FILE_PATH}}"
-            sed -i.bu "/TEMPLATE=${t}\.yml/s/# - task download-template/- task download-template/" "{{.FILE_PATH}}"
+            task="$t"
+            version="main"
           fi
+          echo "Download template: $task version: $version"
+          task download-template TEMPLATE=${task}.yml VERSION=$version PROXY={{.PROXY}} PROXY_CREDENTIALS={{.PROXY_CREDENTIALS}}
         done
-      - defer: rm -f "{{.FILE_PATH}}".bu
     preconditions:
       - sh: test -n "{{.TEMPLATE}}" || test -n "{{.T}}"
         msg: "TEMPLATE|T argument is required"
-    silent: true
-
-  20-t-download:
-    # TODO: Add optional proxy arguments
-    cmds:
-      - date > {{.FILE_TASK_START}}
-      - defer: rm -f {{.FILE_TASK_START}}
-      - mkdir -p "{{.DIR_TASKFILES}}"
-      # - task download-template TEMPLATE=ansible.yml
-      - task download-template TEMPLATE=docker.yml
-      - task download-template TEMPLATE=git.yml
-      # - task download-template TEMPLATE=go.yml
-      - task download-template TEMPLATE=lint.yml
-      # - task download-template TEMPLATE=multipass-lite.yml
-      # - task download-template TEMPLATE=multipass.yml
-      # - task download-template TEMPLATE=system.yml
-      - task download-template TEMPLATE=version.yml
-      - task download-template TEMPLATE=yarn.yml
-      - echo "Download Start $(cat {{.FILE_TASK_START}}) - End $(date)"
-    preconditions:
-      - sh: command -v curl || command -v wget
-        msg: "curl or wget are not installed"
     silent: true
 
   usage:
@@ -152,7 +126,7 @@ tasks:
           if [ "$first_char" = "*" ]; then
              task=$(echo "{{ $line }}" | cut -d ' ' -f2)
              desc=$(echo "{{ $line }}" | sed -e "s/^\* $task//" | sed 's/^[[:space:]]*//g')
-             printf "\e[32m%-25s \033[0m %s\n" "* $task" "$desc"
+             printf "\e[32m%-26s \033[0m %s\n" "* $task" "$desc"
           else
             echo "{{ $line }}"
           fi
@@ -166,13 +140,38 @@ tasks:
     cmds:
       - |
         if [ -x "$(command -v curl)" ]; then
-          curl --progress-bar -o "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+          if [ -z "{{.PROXY}}" ]; then
+            curl --progress-bar -o "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.VERSION}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+          else
+            if [ -z "{{.PROXY_CREDENTIALS}}" ]; then
+              echo "Proxy: {{.PROXY}}"
+              curl -x "{{.PROXY}}" --progress-bar -o "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.VERSION}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+            else
+              echo "Proxy with auth: {{.PROXY}}"
+              curl -U "{{.PROXY_CREDENTIALS}}" -x "{{.PROXY}}" --progress-bar -o "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.VERSION}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}" --proxy-anyauth
+            fi
+          fi
         else
-          wget -cq -O "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+          if [ -z "{{.PROXY}}" ]; then
+            wget -cq -O "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.VERSION}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+          else
+            if [ -z "{{.PROXY_CREDENTIALS}}" ]; then
+              proxy={{.PROXY}}
+              echo "Proxy: $proxy"
+            else
+              proto=$(echo {{.PROXY}} | sed -e's,^\(.*://\).*,\1,g')
+              url=$(echo {{.PROXY}} | sed -e's,^.*://\(.*\),\1,g')
+              proxy="${proto}{{.PROXY_CREDENTIALS}}@${url}"
+              echo "Proxy: ${proto}****:****@${url}"
+            fi
+            export use_proxy=on && export http_proxy=$proxy && export https_proxy=$proxy && wget -cq -O "{{.DIR_TASKFILES}}/{{.TEMPLATE}}" "{{.TT_GIT_REPO}}/{{.VERSION}}/{{.DIR_TASKFILES}}/{{.TEMPLATE}}"
+          fi
         fi
     preconditions:
       - sh: test -n "{{.TEMPLATE}}"
         msg: "TEMPLATE argument is required"
+      - sh: test -n "{{.VERSION}}"
+        msg: "VERSION argument is required"
       - sh: command -v curl || command -v wget
         msg: "curl or wget are not installed"
     silent: true

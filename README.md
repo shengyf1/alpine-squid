@@ -9,7 +9,8 @@ A [Squid](http://www.squid-cache.org/) Docker image:
 * multiarch with support of **amd64** and **arm64**,
 * **non-root** container user,
 * **automatically** updated by comparing SBOM changes,
-* **signature** and SBOM **attestation** attached to the image,
+* image **signed** with [Cosign](https://github.com/sigstore/cosign),
+* an **SBOM attestation** added using [Syft](https://github.com/anchore/syft),
 * available on **Docker Hub** and **Quay.io**.
 
 [![GitLab](https://shields.io/badge/Gitlab-informational?logo=gitlab&style=flat-square)](https://gitlab.com/op_so/docker/alpine-squid) The main repository.

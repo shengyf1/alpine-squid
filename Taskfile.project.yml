@@ -8,26 +8,32 @@
 version: '3'
 
 vars:
-  DEFAULT_TAG: alpine-squid
-  IMAGE_RF: jfxs/robot-framework:latest
   # TO MODIFY: Task templates to download separated by comma
   # Example: TASK_TEMPLATES: go,lint,yarn
-  TASK_TEMPLATES: docker,git,lint,version,yarn
+  TASK_TEMPLATES: docker,git,lint,version
+  # Proxy URL can be configure bellow or as an argument of 00-install-templates
+  TASK_PROXY: ""
+  DEFAULT_TAG: alpine-squid
+  IMAGE_RF: jfxs/robot-framework:latest
 
 tasks:
 
-  00-init-task:
-    desc: "[PROJECT] Init and download tasks templates."
+  00-install-templates:
+    desc: "[PROJECT] Init and download tasks templates. Arguments: [PROXY|P=http://proxy:8080] [PROXY_CREDENTIALS|PC=username:password]"
+    vars:
+      PROXY: '{{default .P .PROXY}}'
+      D_PROXY: '{{default .TASK_PROXY .PROXY}}'
+      PROXY_CREDENTIALS: '{{default .PC .PROXY_CREDENTIALS}}'
     cmds:
       - date > {{.FILE_TASK_START}}
       - defer: rm -f {{.FILE_TASK_START}}
       - mkdir -p "{{.DIR_TASKFILES}}"
-      - task 10-t-activate TEMPLATE={{.TASK_TEMPLATES}}
-      - task 20-t-download
+      - task 10-install-templates TEMPLATE={{.TASK_TEMPLATES}} PROXY={{.D_PROXY}} PROXY_CREDENTIALS={{.PROXY_CREDENTIALS}}
+      - echo "Install templates Start $(cat {{.FILE_TASK_START}}) - End $(date)"
     silent: true
 
   10-build-local:
-    desc: "[PROJECT] Build an image locally. Arguments: TAG|T=image:tag [VCS_REF|C=110f273aad1cc] [FILE|F=<Dockerfile_path>] (*)"
+    desc: "[PROJECT] Build an image locally. Arguments: [TAG|T=image:tag] [VCS_REF|C=110f273aad1cc] [FILE|F=<Dockerfile_path>] (*)"
     summary: |
       [PROJECT] Build an image locally.
       Usage: task 00:10-build-local TAG|T=<image[:tag]> [VCS_REF|C=<commit_sha>] [FILE|F=<Dockerfile_path>]
@@ -48,38 +54,6 @@ tasks:
         version=$(task version:get-docker-apk-version IMG=alpine:latest APK="squid")
         echo "$version"
         task docker:build-local TAG="{{.D_TAG}}" VERSION="$version" VCS_REF="{{.D_VCS_REF}}" FILE="{{.D_FILE}}"
-    silent: true
-
-  20-RF-test:
-    desc: "[PROJECT] Robot Framework tests. Arguments: [IMG|I=jfxs/ansible:latest] [PULL|P=<n|N>] (*)"
-    summary: |
-      [PROJECT] Robot Framework tests.
-      If robot command is in the path and IMG/I argument is not set, the local robot command is executed,
-      otherwise an Robot Framework Docker image is used.
-      Usage: task 00:10-RF-test [IMG|I=<docker_image:tag>] [PULL|P=<n|N>]
-
-      Arguments:
-       IMG    | I  Docker Robot Framework image to use (optional, by default {{.IMAGE_RF}})
-       PULL   | P  Pull docker image (optional, by default yes)
-    vars:
-      IMG: '{{default .I .IMG}}'
-      IMG_D: '{{default .IMAGE_RF .IMG}}'
-      PULL: '{{default .P .PULL}}'
-      EXEC: robot
-    cmds:
-      - mkdir -p reports
-      - |
-        if (! test -n "{{.IMG}}") && (command -v {{.EXEC}} 2>&1 >/dev/null); then
-          {{.EXEC}} --outputdir reports tests/RF
-        else
-          if ! command -v docker 2>&1 >/dev/null; then
-            echo "docker and {{.EXEC}} are not installed!" && exit 1
-          fi
-          if [ "{{.PULL}}" != "n" ] && [ "{{.PULL}}" != "N" ]; then docker pull "{{.IMG_D}}"; fi
-          chmod 777 reports
-          docker run -t --rm -v $(pwd)/tests:/tests:ro -v $(pwd)/files:/files:ro -v $(pwd)/reports:/reports "{{.IMG_D}}" {{.EXEC}} --outputdir /reports -v TESTS_DIR:/tests -v SHELL_DIR:/files RF
-          chmod 755 reports
-        fi
     silent: true
 
   30-sanity-test:
