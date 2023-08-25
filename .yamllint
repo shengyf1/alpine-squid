@@ -2,6 +2,7 @@
 extends: default
 
 ignore: |
+  styles/
   Taskfile.d/
   Taskfile.yml
 

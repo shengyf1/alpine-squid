@@ -18,18 +18,11 @@ vars:
 
 tasks:
 
-  00-install-templates:
-    desc: "[PROJECT] Init and download tasks templates. Arguments: [PROXY|P=http://proxy:8080] [PROXY_CREDENTIALS|PC=username:password]"
-    vars:
-      PROXY: '{{default .P .PROXY}}'
-      D_PROXY: '{{default .TASK_PROXY .PROXY}}'
-      PROXY_CREDENTIALS: '{{default .PC .PROXY_CREDENTIALS}}'
+  00-get-list-templates:
+    # Get the list of templates to download
+    # Do not remove
     cmds:
-      - date > {{.FILE_TASK_START}}
-      - defer: rm -f {{.FILE_TASK_START}}
-      - mkdir -p "{{.DIR_TASKFILES}}"
-      - task 10-install-templates TEMPLATE={{.TASK_TEMPLATES}} PROXY={{.D_PROXY}} PROXY_CREDENTIALS={{.PROXY_CREDENTIALS}}
-      - echo "Install templates Start $(cat {{.FILE_TASK_START}}) - End $(date)"
+      - echo "{{.TASK_TEMPLATES}}"
     silent: true
 
   10-build-local:
@@ -63,17 +56,22 @@ tasks:
       Usage: task 00:20-sanity-test PROXY|P=<proxy_url>
 
       Arguments:
-       PROXY    | P  Proxy host to test (required)
+       PROXY | P  Proxy host to test (required)
     vars:
-      PROXY: '{{default .P .PROXY}}'
-      TARGET: google.com
+      PROXY: '{{default .PX .PROXY}}'
+      TARGET: https://www.google.com
     cmds:
       - |
-        ok_200=$(export http_proxy="{{.PROXY}}" && export https_proxy="{{.PROXY}}" && wget -Y on --spider --server-response "{{.TARGET}}" 2>&1 | grep '200\ OK' | wc -l | awk '{print $1}')
-        if [ $ok_200 -eq 1 ]; then printf "\033[0;32m[OK]\033[0m Sanity test.\n"; else printf "\033[0;31m[FAILED] Sanity test!\033[0m\n" && exit 1; fi
+        http_code=$(curl -x {{.PROXY}} -L -s -o /dev/null -w "%{http_code}" {{.TARGET}})
+        if [ "${http_code}" != "200" ]; then
+          printf "\033[0;31m[FAILED] Sanity test!\033[0m\n"
+          exit 1
+        else
+          printf "\033[0;32m[OK]\033[0m Sanity test.\n"
+        fi
     preconditions:
-      - sh: test -n "{{.PROXY}}" || test -n "{{.P}}"
-        msg: "PROXY|P argument is required"
+      - sh: test -n "{{.PROXY}}" || test -n "{{.PX}}"
+        msg: "PROXY|PX argument is required"
     silent: true
 
   40-pre-commit:
@@ -81,7 +79,7 @@ tasks:
     cmds:
       - date > {{.FILE_TASK_START}}
       - defer: rm -f {{.FILE_TASK_START}}
-      - task lint:all
+      - task lint:all MEX='"#styles" "#.Taskfile.d"'
       - task lint:docker
       - task lint:shell FILES=files/*.sh
       - echo "" && echo "Checks Start $(cat {{.FILE_TASK_START}}) - End $(date)"

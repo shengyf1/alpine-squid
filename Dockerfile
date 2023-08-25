@@ -25,7 +25,7 @@ RUN apk --no-cache add ca-certificates squid tzdata \
     && chmod 755 /usr/local/bin/uid-entrypoint.sh \
     && mkdir -p /etc/squid/conf.d /var/log/squid /var/cache/squid \
     && chgrp -R 0 /var/log/squid /var/cache/squid \
-    && chmod -R g=u /var/log/squid /var/cache/squid \
+    && chmod -R g=u /etc/passwd /var/log/squid /var/cache/squid \
     && sed -i '1s;^;include /etc/squid/conf.d/*.conf\n;' /etc/squid/squid.conf
 
 ENV TZ=UTC

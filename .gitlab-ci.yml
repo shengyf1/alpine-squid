@@ -11,9 +11,11 @@ variables:
   DOCKER_QUAY_RM_URL: quay.io/ifxs/alpine-squid
   DOCKER_SBOM_SUBSET: "^squid "
   IMAGE_ALPINE: alpine:latest
+  IMAGE_TASK: jfxs/alpine-task
   LINT_DOCKER: "true"
   LINT_SHELL: "true"
   LINT_SHELL_FILE: "files/*.sh"
+  LINT_VALE: "true"
   TASKFILE_VERSION: .Taskfile-version.yml
 
 stages:
@@ -22,7 +24,6 @@ stages:
   - test-image
   - trigger-publish-image
   - publish-image
-#  - notify-gchat
 
 docker:build:
   before_script:
@@ -30,18 +31,11 @@ docker:build:
     - DOCKER_BUILD_VERSION=$(task --taskfile "$TASKFILE_VERSION" get-docker-apk-version IMG="$IMAGE_ALPINE" APK="squid")
 
 amd64:sanity-test:
-  variables:
-    ARCH: amd64
-  retry: 2
-  image: $IMAGE_ALPINE
+  image: $IMAGE_TASK
   stage: test-image
   services:
     - name: $DOCKER_REGISTRY_IMAGE_TAG
       alias: proxy
-  before_script:
-    - apk --no-cache add curl file git ncurses
-    - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
-    - task --version
   script:
     - task 00:30-sanity-test PROXY=http://proxy:3128
 
@@ -49,8 +43,6 @@ arm64:sanity-test:
   extends: amd64:sanity-test
   tags:
     - arm64
-  variables:
-    ARCH: arm64
 
 sanity-test:version:
   before_script:
